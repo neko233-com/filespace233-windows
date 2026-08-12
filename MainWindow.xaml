@@ -1,0 +1,154 @@
+<Window
+    x:Class="Filespace233.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:Filespace233.Models"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Padding="18,14,18,10" ColumnSpacing="14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="1">
+                <TextBlock Text="FILESPACE" FontSize="20" FontWeight="SemiBold" CharacterSpacing="120" />
+                <TextBlock Text="Power-user file workspace" Opacity="0.62" FontSize="12" />
+            </StackPanel>
+            <AutoSuggestBox x:Name="SearchBox" Grid.Column="1" Width="560" HorizontalAlignment="Center"
+                            PlaceholderText="Search files and folders  Ctrl+K"
+                            QueryIcon="Find" QuerySubmitted="SearchBox_QuerySubmitted" TextChanged="SearchBox_TextChanged" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="NewTabButton" Content="＋" FontSize="18" Click="NewTabButton_Click" ToolTipService.ToolTip="New tab" />
+                <Button Content="⚙" FontSize="17" Click="SettingsButton_Click" ToolTipService.ToolTip="Settings" />
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden">
+                <ItemsControl x:Name="TabsList" Padding="14,6">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Row="2" Padding="14,10" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Content="←" FontSize="17" Click="BackButton_Click" ToolTipService.ToolTip="Back" />
+            <Button Grid.Column="1" Content="→" FontSize="17" Click="ForwardButton_Click" ToolTipService.ToolTip="Forward" />
+            <Button Grid.Column="2" Content="↑" FontSize="17" Click="UpButton_Click" ToolTipService.ToolTip="Parent folder" />
+            <Button Grid.Column="3" Content="⟳" FontSize="16" Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh" />
+            <AutoSuggestBox x:Name="PathBox" Grid.Column="4" PlaceholderText="Path" QuerySubmitted="PathBox_QuerySubmitted" />
+            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6">
+                <Button Content="＋" FontSize="16" Click="NewFolderButton_Click" ToolTipService.ToolTip="New folder" />
+                <Button Content="⧉" FontSize="16" Click="CopyButton_Click" ToolTipService.ToolTip="Copy selected items to current folder" />
+                <Button Content="⌫" FontSize="16" Click="DeleteButton_Click" ToolTipService.ToolTip="Delete selected items" />
+                <Button Content="▦" FontSize="16" Click="ToggleDualPaneButton_Click" ToolTipService.ToolTip="Toggle dual pane" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="3" Padding="14,0,14,14" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftColumn" Width="*" />
+                <ColumnDefinition x:Name="RightColumn" Width="0" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Padding="14,12" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="PaneTitle" Text="This PC" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock x:Name="PaneSummary" Text="" Opacity="0.62" FontSize="12" />
+                        </StackPanel>
+                        <ComboBox x:Name="ViewModeBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ViewModeBox_SelectionChanged">
+                            <ComboBoxItem Content="Details" />
+                            <ComboBoxItem Content="Compact" />
+                        </ComboBox>
+                    </Grid>
+                    <ListView x:Name="FileList" Grid.Row="1" IsItemClickEnabled="True" ItemClick="FileList_ItemClick"
+                              SelectionMode="Extended" DoubleTapped="FileList_DoubleTapped">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:FileItem">
+                                <Grid Padding="12,8" ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="130" />
+                                        <ColumnDefinition Width="170" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="34" Height="34" CornerRadius="6" Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                        <TextBlock Text="{x:Bind TypeBadge}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9" FontWeight="SemiBold" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{x:Bind Extension}" FontSize="11" Opacity="0.55" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{x:Bind SizeDisplay}" VerticalAlignment="Center" Opacity="0.70" />
+                                    <TextBlock Grid.Column="3" Text="{x:Bind ModifiedDisplay}" VerticalAlignment="Center" Opacity="0.70" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+            <Border x:Name="RightPane" Grid.Column="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Visibility="Collapsed">
+                <Grid>
+                    <TextBlock Text="Second pane" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.55" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="4" Padding="16,8" ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusText" Text="Ready" Opacity="0.70" />
+            <TextBlock x:Name="PerformanceText" Grid.Column="1" Text="Async workspace" Opacity="0.55" />
+        </Grid>
+
+        <Border x:Name="SearchOverlay" Grid.RowSpan="5" Background="#CC101317" Visibility="Collapsed" Padding="0,70,0,0">
+            <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Width="720" MaxHeight="650">
+                <Border Background="{ThemeResource SolidBackgroundFillColorBase}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                    <Grid Padding="18">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <AutoSuggestBox x:Name="OverlaySearchBox" PlaceholderText="Search everywhere" QuerySubmitted="OverlaySearchBox_QuerySubmitted" />
+                        <ListView x:Name="SearchResultsList" Grid.Row="1" Margin="0,12,0,0" IsItemClickEnabled="True" ItemClick="SearchResultsList_ItemClick">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:SearchResult">
+                                    <Grid Padding="10,9" ColumnSpacing="12">
+                                        <TextBlock Text="{x:Bind TypeBadge}" Width="38" Opacity="0.60" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind ParentPath}" FontSize="11" Opacity="0.55" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

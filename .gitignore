@@ -1,0 +1,14 @@
+## Build output
+bin/
+obj/
+artifacts/
+.vs/
+
+## IDE and user state
+*.user
+*.suo
+.idea/
+
+## Local packaging
+AppPackages/
+TestResults/
