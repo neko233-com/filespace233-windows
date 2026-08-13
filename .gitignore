@@ -11,4 +11,5 @@ artifacts/
 
 ## Local packaging
 AppPackages/
+BundleArtifacts/
 TestResults/

@@ -2,6 +2,9 @@
   "profiles": {
     "Filespace233": {
       "commandName": "Project"
+    },
+    "Filespace233 MSIX": {
+      "commandName": "MsixPackage"
     }
   }
 }

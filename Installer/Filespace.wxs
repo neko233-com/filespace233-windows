@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Filespace"
+    Manufacturer="neko233-com"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="{1D56A8D8-4A0B-4F61-8B1B-A7A28D1F7E33}"
+    Scope="perUser"
+    Compressed="yes">
+    <SummaryInformation Description="Filespace WinUI file workspace" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Filespace is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Filespace" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Filespace" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Filespace" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+    <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+      <Shortcut Id="ApplicationStartMenuShortcut" Name="Filespace" Target="[INSTALLFOLDER]Filespace233.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\neko233-com\Filespace" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.SourceDir)\**" />
+    </ComponentGroup>
+  </Package>
+</Wix>

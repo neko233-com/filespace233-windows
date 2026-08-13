@@ -15,7 +15,7 @@
 - `EverythingBridge`: optional `es.exe` process integration with cancellation and no shell execution.
 - `SettingsService`: local app settings and default search roots.
 - `GlobalHotkeyService`: Win32 `RegisterHotKey` for Win+F only. There is no Win+E hook.
-- `StartupService`: optional current-user Run entry that starts the app with `--background`, allowing Win+F to work after sign-in without replacing the Windows Explorer shortcut.
+- `StartupService`: optional packaged Windows `StartupTask` that starts the app at sign-in, allowing Win+F to work without replacing the Windows Explorer shortcut. Unpackaged development builds do not write startup registry entries.
 - `MainWindow`: composition layer for navigation state and UI interaction.
 
 ## Performance notes

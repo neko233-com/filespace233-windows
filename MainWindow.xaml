@@ -3,152 +3,145 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:Filespace233.Models"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
-    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    Title="Filespace">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Padding="18,14,18,10" ColumnSpacing="14">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Spacing="1">
-                <TextBlock Text="FILESPACE" FontSize="20" FontWeight="SemiBold" CharacterSpacing="120" />
-                <TextBlock Text="Power-user file workspace" Opacity="0.62" FontSize="12" />
-            </StackPanel>
-            <AutoSuggestBox x:Name="SearchBox" Grid.Column="1" Width="560" HorizontalAlignment="Center"
-                            PlaceholderText="Search files and folders  Ctrl+K"
-                            QueryIcon="Find" QuerySubmitted="SearchBox_QuerySubmitted" TextChanged="SearchBox_TextChanged" />
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                <Button x:Name="NewTabButton" Content="＋" FontSize="18" Click="NewTabButton_Click" ToolTipService.ToolTip="New tab" />
-                <Button Content="⚙" FontSize="17" Click="SettingsButton_Click" ToolTipService.ToolTip="Settings" />
+        <Grid x:Name="AppTitleBar" Height="48" Padding="16,0" Background="{ThemeResource SolidBackgroundFillColorBase}">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Image Source="Assets/FilespaceLogo.png" Width="22" Height="22" />
+                <StackPanel>
+                    <TextBlock Text="Filespace" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock Text="File workspace" FontSize="11" Opacity="0.62" />
+                </StackPanel>
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,1">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden">
-                <ItemsControl x:Name="TabsList" Padding="14,6">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                </ItemsControl>
-            </ScrollViewer>
-        </Border>
+        <Grid x:Name="RootGrid" Grid.Row="1" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <Grid Grid.Row="2" Padding="14,10" ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Button Content="←" FontSize="17" Click="BackButton_Click" ToolTipService.ToolTip="Back" />
-            <Button Grid.Column="1" Content="→" FontSize="17" Click="ForwardButton_Click" ToolTipService.ToolTip="Forward" />
-            <Button Grid.Column="2" Content="↑" FontSize="17" Click="UpButton_Click" ToolTipService.ToolTip="Parent folder" />
-            <Button Grid.Column="3" Content="⟳" FontSize="16" Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh" />
-            <AutoSuggestBox x:Name="PathBox" Grid.Column="4" PlaceholderText="Path" QuerySubmitted="PathBox_QuerySubmitted" />
-            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6">
-                <Button Content="＋" FontSize="16" Click="NewFolderButton_Click" ToolTipService.ToolTip="New folder" />
-                <Button Content="⧉" FontSize="16" Click="CopyButton_Click" ToolTipService.ToolTip="Copy selected items to current folder" />
-                <Button Content="⌫" FontSize="16" Click="DeleteButton_Click" ToolTipService.ToolTip="Delete selected items" />
-                <Button Content="▦" FontSize="16" Click="ToggleDualPaneButton_Click" ToolTipService.ToolTip="Toggle dual pane" />
-            </StackPanel>
-        </Grid>
-
-        <Grid Grid.Row="3" Padding="14,0,14,14" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LeftColumn" Width="*" />
-                <ColumnDefinition x:Name="RightColumn" Width="0" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Grid Padding="14,12" ColumnSpacing="10">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock x:Name="PaneTitle" Text="This PC" FontSize="16" FontWeight="SemiBold" />
-                            <TextBlock x:Name="PaneSummary" Text="" Opacity="0.62" FontSize="12" />
-                        </StackPanel>
-                        <ComboBox x:Name="ViewModeBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ViewModeBox_SelectionChanged">
-                            <ComboBoxItem Content="Details" />
-                            <ComboBoxItem Content="Compact" />
-                        </ComboBox>
-                    </Grid>
-                    <ListView x:Name="FileList" Grid.Row="1" IsItemClickEnabled="True" ItemClick="FileList_ItemClick"
-                              SelectionMode="Extended" DoubleTapped="FileList_DoubleTapped">
-                        <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="models:FileItem">
-                                <Grid Padding="12,8" ColumnSpacing="14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="130" />
-                                        <ColumnDefinition Width="170" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Width="34" Height="34" CornerRadius="6" Background="{ThemeResource AccentFillColorDefaultBrush}">
-                                        <TextBlock Text="{x:Bind TypeBadge}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9" FontWeight="SemiBold" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{x:Bind Extension}" FontSize="11" Opacity="0.55" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="2" Text="{x:Bind SizeDisplay}" VerticalAlignment="Center" Opacity="0.70" />
-                                    <TextBlock Grid.Column="3" Text="{x:Bind ModifiedDisplay}" VerticalAlignment="Center" Opacity="0.70" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </Grid>
-            </Border>
-            <Border x:Name="RightPane" Grid.Column="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Visibility="Collapsed">
-                <Grid>
-                    <TextBlock Text="Second pane" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.55" />
-                </Grid>
-            </Border>
-        </Grid>
-
-        <Grid Grid.Row="4" Padding="16,8" ColumnSpacing="12">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock x:Name="StatusText" Text="Ready" Opacity="0.70" />
-            <TextBlock x:Name="PerformanceText" Grid.Column="1" Text="Async workspace" Opacity="0.55" />
-        </Grid>
-
-        <Border x:Name="SearchOverlay" Grid.RowSpan="5" Background="#CC101317" Visibility="Collapsed" Padding="0,70,0,0">
-            <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Width="720" MaxHeight="650">
-                <Border Background="{ThemeResource SolidBackgroundFillColorBase}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
-                    <Grid Padding="18">
-                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                        <AutoSuggestBox x:Name="OverlaySearchBox" PlaceholderText="Search everywhere" QuerySubmitted="OverlaySearchBox_QuerySubmitted" />
-                        <ListView x:Name="SearchResultsList" Grid.Row="1" Margin="0,12,0,0" IsItemClickEnabled="True" ItemClick="SearchResultsList_ItemClick">
-                            <ListView.ItemTemplate>
-                                <DataTemplate x:DataType="models:SearchResult">
-                                    <Grid Padding="10,9" ColumnSpacing="12">
-                                        <TextBlock Text="{x:Bind TypeBadge}" Width="38" Opacity="0.60" />
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{x:Bind ParentPath}" FontSize="11" Opacity="0.55" TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </Grid>
-                </Border>
+            <Grid Grid.Row="0" Padding="10,4">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="300" /></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Click="BackButton_Click" ToolTipService.ToolTip="Back"><SymbolIcon Symbol="Back" /></Button>
+                    <Button Click="ForwardButton_Click" ToolTipService.ToolTip="Forward"><SymbolIcon Symbol="Forward" /></Button>
+                    <Button Click="UpButton_Click" ToolTipService.ToolTip="Parent folder"><SymbolIcon Symbol="Up" /></Button>
+                    <Button Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh"><SymbolIcon Symbol="Refresh" /></Button>
+                    <Button Click="NewFolderButton_Click" ToolTipService.ToolTip="Create a folder"><SymbolIcon Symbol="NewFolder" /></Button>
+                    <Button Click="CopyButton_Click" ToolTipService.ToolTip="Copy selected items"><SymbolIcon Symbol="Copy" /></Button>
+                    <Button Click="DeleteButton_Click" ToolTipService.ToolTip="Delete selected items"><SymbolIcon Symbol="Delete" /></Button>
+                    <Button Click="ToggleDualPaneButton_Click" ToolTipService.ToolTip="Toggle dual pane"><SymbolIcon Symbol="ViewAll" /></Button>
+                    <Button Click="SearchButton_Click" ToolTipService.ToolTip="Search everywhere (Ctrl+K)"><SymbolIcon Symbol="Find" /></Button>
+                    <Button Click="SettingsButton_Click" ToolTipService.ToolTip="Settings"><SymbolIcon Symbol="Setting" /></Button>
+                </StackPanel>
+                <TextBox x:Name="SearchBox" Grid.Column="1" PlaceholderText="Search files  Ctrl+K" KeyDown="SearchBox_KeyDown" />
             </Grid>
-        </Border>
+
+            <Border Grid.Row="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,1" Background="{ThemeResource SolidBackgroundFillColorBase}">
+                <ScrollViewer x:Name="TabsScrollViewer" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Hidden" IsScrollInertiaEnabled="True">
+                    <ItemsControl x:Name="TabsList" Padding="12,6">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="224" MinWidth="204" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0" Background="{ThemeResource SolidBackgroundFillColorBase}">
+                    <ScrollViewer x:Name="SidebarScrollViewer" VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled" IsScrollInertiaEnabled="True">
+                        <StackPanel Padding="12,18,12,14">
+                            <TextBlock Text="LOCATIONS" FontSize="11" FontWeight="SemiBold" Opacity="0.58" Margin="10,0,0,8" />
+                            <Button Tag="home" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="Home" /><TextBlock Text="Home" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Button Tag="desktop" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="AllApps" /><TextBlock Text="Desktop" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Button Tag="documents" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="Document" /><TextBlock Text="Documents" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Button Tag="downloads" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="Download" /><TextBlock Text="Downloads" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Button Tag="pictures" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="Pictures" /><TextBlock Text="Pictures" VerticalAlignment="Center" /></StackPanel></Button>
+                            <TextBlock Text="PLACES" FontSize="11" FontWeight="SemiBold" Opacity="0.58" Margin="10,22,0,8" />
+                            <Button Tag="profile" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="Contact" /><TextBlock Text="User profile" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Button Tag="drives" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="AllApps" /><TextBlock Text="This PC" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Button Tag="network" Click="SidebarLocation_Click" HorizontalContentAlignment="Stretch" Padding="10,9"><StackPanel Orientation="Horizontal" Spacing="12"><SymbolIcon Symbol="Globe" /><TextBlock Text="Network" VerticalAlignment="Center" /></StackPanel></Button>
+                            <Border Margin="10,24,10,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" />
+                            <TextBlock Text="Filespace" FontSize="12" FontWeight="SemiBold" Margin="10,14,0,0" />
+                            <TextBlock Text="Keyboard-first file workspace" TextWrapping="Wrap" FontSize="11" Opacity="0.58" Margin="10,2,8,0" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <Grid Grid.Column="1" Padding="18,14,18,14">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Click="BackButton_Click" ToolTipService.ToolTip="Back"><SymbolIcon Symbol="Back" /></Button>
+                            <Button Click="ForwardButton_Click" ToolTipService.ToolTip="Forward"><SymbolIcon Symbol="Forward" /></Button>
+                            <Button Click="UpButton_Click" ToolTipService.ToolTip="Parent folder"><SymbolIcon Symbol="Up" /></Button>
+                        </StackPanel>
+                        <TextBox x:Name="PathBox" Grid.Column="1" Margin="10,0" PlaceholderText="Enter a folder path" KeyDown="PathBox_KeyDown" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                            <Button Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh"><SymbolIcon Symbol="Refresh" /></Button>
+                            <Button Click="ToggleDualPaneButton_Click" ToolTipService.ToolTip="Toggle dual pane"><SymbolIcon Symbol="ViewAll" /></Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions><ColumnDefinition x:Name="LeftColumn" Width="*" /><ColumnDefinition x:Name="RightColumn" Width="0" /></Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <Grid Padding="16,14">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel><TextBlock x:Name="PaneTitle" Text="Home" FontSize="20" FontWeight="SemiBold" /><TextBlock x:Name="PaneSummary" FontSize="12" Opacity="0.62" Margin="0,3,0,0" /></StackPanel>
+                                    <ComboBox x:Name="ViewModeBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ViewModeBox_SelectionChanged" MinWidth="112"><ComboBoxItem Content="Details" /><ComboBoxItem Content="Compact" /></ComboBox>
+                                </Grid>
+                                <ListView x:Name="FileList" Grid.Row="1" IsItemClickEnabled="True" ItemClick="FileList_ItemClick" SelectionMode="Extended" DoubleTapped="FileList_DoubleTapped" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsScrollInertiaEnabled="True">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="models:FileItem">
+                                            <Grid MinHeight="54" Padding="14,7" ColumnSpacing="14">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="110" /><ColumnDefinition Width="160" /></Grid.ColumnDefinitions>
+                                                <Border Width="34" Height="34" CornerRadius="7" Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center"><TextBlock Text="{x:Bind TypeBadge}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9" FontWeight="SemiBold" /></Border>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind Extension}" FontSize="11" Opacity="0.5" /></StackPanel>
+                                                <TextBlock Grid.Column="2" Text="{x:Bind SizeDisplay}" VerticalAlignment="Center" Opacity="0.68" />
+                                                <TextBlock Grid.Column="3" Text="{x:Bind ModifiedDisplay}" VerticalAlignment="Center" Opacity="0.68" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="RightPane" Grid.Column="1" Margin="12,0,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Visibility="Collapsed">
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <Grid Padding="16,14"><StackPanel><TextBlock x:Name="RightPaneTitle" Text="Second pane" FontSize="18" FontWeight="SemiBold" /><TextBlock x:Name="RightPaneSummary" FontSize="12" Opacity="0.62" Margin="0,3,0,0" /></StackPanel></Grid>
+                                <TextBox x:Name="RightPanePath" Grid.Row="1" Margin="16,0,16,10" PlaceholderText="Enter a folder path" KeyDown="RightPanePath_KeyDown" />
+                                <ListView x:Name="RightFileList" Grid.Row="2" DoubleTapped="RightFileList_DoubleTapped" SelectionMode="Extended" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsScrollInertiaEnabled="True">
+                                    <ListView.ItemTemplate><DataTemplate x:DataType="models:FileItem"><Grid MinHeight="48" Padding="12,6" ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions><Border Width="30" Height="30" CornerRadius="6" Background="{ThemeResource AccentFillColorDefaultBrush}"><TextBlock Text="{x:Bind TypeBadge}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="8" FontWeight="SemiBold" /></Border><TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /><TextBlock Grid.Column="2" Text="{x:Bind SizeDisplay}" VerticalAlignment="Center" Opacity="0.68" /></Grid></DataTemplate></ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Row="3" Padding="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock x:Name="StatusText" Text="Ready" Opacity="0.7" /><TextBlock x:Name="PerformanceText" Grid.Column="1" Text="Async workspace" Opacity="0.55" /></Grid>
+
+            <Border x:Name="SearchOverlay" Grid.RowSpan="4" Canvas.ZIndex="20" Background="#990A0D10" Visibility="Collapsed" Padding="0,54,0,0">
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Width="720" MaxHeight="680">
+                    <Border Background="{ThemeResource SolidBackgroundFillColorBase}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                        <Grid Padding="20"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions><TextBlock Text="Quick search" FontSize="18" FontWeight="SemiBold" /><TextBox x:Name="OverlaySearchBox" Grid.Row="1" Margin="0,14,0,0" PlaceholderText="Search files and folders" KeyDown="OverlaySearchBox_KeyDown" /><ListView x:Name="SearchResultsList" Grid.Row="2" Margin="0,12,0,0" IsItemClickEnabled="True" ItemClick="SearchResultsList_ItemClick" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollMode="Enabled" ScrollViewer.IsScrollInertiaEnabled="True"><ListView.ItemTemplate><DataTemplate x:DataType="models:SearchResult"><Grid Padding="10,9" ColumnSpacing="12"><TextBlock Text="{x:Bind TypeBadge}" Width="38" Opacity="0.6" /><StackPanel Grid.Column="1"><TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind ParentPath}" FontSize="11" Opacity="0.55" TextTrimming="CharacterEllipsis" /></StackPanel></Grid></DataTemplate></ListView.ItemTemplate></ListView></Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

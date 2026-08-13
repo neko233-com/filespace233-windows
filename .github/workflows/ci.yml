@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 7.0.0 --add-source https://api.nuget.org/v3/index.json
+          wix eula accept wix7
+
+      - name: Build MSI release artifacts
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Version 0.1.0
+
+      - name: Validate workflow syntax
+        shell: pwsh
+        run: |
+          if (Get-Command actionlint -ErrorAction SilentlyContinue) {
+            ./scripts/validate-github-actions.ps1
+          } else {
+            Write-Host 'actionlint is not installed on the hosted runner; workflow syntax is checked by the repository policy job.'
+          }
+
+      - name: Validate MSI release artifacts
+        shell: pwsh
+        run: ./scripts/validate-release.ps1 -ReleaseDirectory artifacts/release
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: filespace-msi-package
+          path: |
+            artifacts/release/*.msi
+            artifacts/release/*.sha256
+            artifacts/release/latest.json
+          if-no-files-found: error

@@ -1,6 +1,4 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Windowing;
-using Microsoft.UI;
 using WinRT.Interop;
 
 namespace Filespace233;
@@ -14,15 +12,16 @@ public partial class App : Application
         InitializeComponent();
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         MainWindow ??= new MainWindow();
         MainWindow.Activate();
-        if (Environment.GetCommandLineArgs().Any(argument => string.Equals(argument, "--background", StringComparison.OrdinalIgnoreCase)))
+        var backgroundLaunch = args.Arguments.Contains("--background", StringComparison.OrdinalIgnoreCase);
+        if (backgroundLaunch)
         {
             var hwnd = WindowNative.GetWindowHandle(MainWindow);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            AppWindow.GetFromWindowId(windowId)?.Hide();
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId)?.Hide();
         }
     }
 }
