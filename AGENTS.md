@@ -8,7 +8,16 @@ FileSpace233 的工程规则。改代码前先读这一页。
 - **原生 UI**：`github.com/egoist/mygo`（GPUI 思路的 Go 原生 UI，`ui.View` / `ui.Context`）+ `github.com/lobehub/lobe-mygo`（Lobe 风格组件与 `theme.TokensOf`，即本项目的 "awesome" 组件层）。不用 WebView、HTML、CSS、JS。
 - 所有构建、测试、CI 都必须显式 `CGO_ENABLED=0`，验证时 `go env CGO_ENABLED` 必须是 `0`。
 - **发布目标只有 `windows/amd64`（x86-64）+ MSI**。不产出 NSIS `.exe` 安装包，不产出 macOS / Linux / arm64 包。
-- 图标与发布资源：`resources/icon.png`（1024×1024，`mygo build` 生成 exe 图标）、`resources/tray.png`（32×32 托盘图标）、`resources/app.ico`（WiX 快捷方式 / ARP 图标）。
+- 图标与发布资源：`resources/icon-src.png`（透明源图）、`resources/icon.png`（1024×1024，`mygo build` 生成 exe 图标）、`resources/tray.png`（32×32 托盘图标）、`resources/app.ico`（WiX 快捷方式 / ARP 图标）。改图标只改 `icon-src.png`，然后跑 `powershell -ExecutionPolicy Bypass -File .\scripts\make-icons.ps1` 同步三件套，不要手改尺寸。
+
+## 视觉（Apple Liquid Glass，必须保持）
+
+- 主题是 Apple 浅色毛玻璃，不是 Vercel dark、不是纯黑面板。`theme.go` 的 `appTheme` 负责色板，`applyAppleUI(c)` 固定浅色主题；不要改回 `applyVercel` 或纯黑 `BgLayout`。
+- 顶栏、侧栏、每个文件面板、Inspector、状态栏必须用 `github.com/egoist/mygo/plugins/glass` 的 `glass.Glass`；`ui.Transparent` 让列表和工具栏透出玻璃，不要用不透明背景盖回去。
+- 根窗口用 `appleCanvasTop → appleCanvasEdge` 渐变 + `appleBackdrop(c)` 的紫/蓝/粉光晕；不要退回单色背景，否则毛玻璃看不出层次。
+- 字体走 `SF Pro Text, Segoe UI Variable, Segoe UI, sans-serif`；字号 13 基准。
+- 头部 logo 必须彩色，不要 `.Grayscale()`；logo 只在包级 `ui.DecodeBitmap` 创建一次。
+- 选中逻辑：活动面板选中行 `tk.Info` 蓝底 + `tk.PrimaryForeground` 白字；非活动面板选中行半透明黑底 + 正常 `tk.Text` 深色字。不要给非活动选中行刷白字，否则浅色主题下不可读。
 
 ## 后台常驻与托盘（必须保持）
 
@@ -23,11 +32,11 @@ FileSpace233 的工程规则。改代码前先读这一页。
 - `App.panes` 始终保留 4 个独立 `Pane`；`mode=2` 用前两个，`mode=4` 用 2×2。默认 `mode=2`、`split=0.5`。
 - 分栏必须用 `ui.SplitPercent` / `ui.SplitVerticalPercent`，不要手写 Row 百分比布局；`splitPct` 与底部 slider 的 `split` 双向同步并持久化。
 - 每个 `paneView` 必须先 `c.Key("pane-N")` 隔离控件身份；每个 `ui.List` 再用 `c.Key("files")`。否则多个列表共享选择和焦点状态。
-- 活动面板用 `tk.Info` 2px 边框；非活动面板 1px `tk.BorderSecondary`。
+- 活动面板用 1px `tk.Info` 边框；非活动面板 1px `tk.BorderSecondary`。
 - 全局热键 `Ctrl+Win+E`：先 `GlobalShortcut.RegisterWith("Ctrl+Super+E")`；被占用时用 `installHotkeyHook()` 低级键盘钩子兜底，钩子内 `showWindow()` 并吞掉按键。不要删掉兜底。
 - Inspector 默认隐藏，只能从右下角 `PanelRight` 按钮或面板内 X 打开/关闭；不要默认展开。
 - 侧边栏盘符必须显示容量进度条和 `已用 / 总量 · 百分比`；进度条用 `Grow(used)` + `Grow(1-used)`，不要用 `WidthPercent`（会被 Row 拉满）。
-- 选中行：`ui.List` 会给选中行铺 `Theme.Accent` 并设 `AccentText`。本项目 `appTheme` 把 Accent 设为 Info 蓝、AccentText 白色、InactiveAccent 也设为 Info；行内文字/图标在选中时必须显式用 `tk.PrimaryForeground`，否则会出现黑底黑字。
+- 选中行：`ui.List` 会给选中行铺 `Theme.Accent` 并设 `AccentText`。行内文字/图标要按 `selected && active` 判断：活动面板选中用 `tk.PrimaryForeground` 白字，非活动面板选中保留 `tk.Text` 深色字；不要把非活动选中行也刷白。
 - 不要再使用 `tk.PrimaryFillTertiary` 作选中底色。
 - 列宽随面板宽度收敛：`paneCompact` 在窄于 40% 时隐藏“类型”并用紧凑尺寸，`paneNarrow` 在窄于 32% 时只留“名称”，防止表头换行。
 - 面包屑在紧凑面板只保留根 + 当前段，并固定 28px 高度 + `Clip()`，禁止换行压到列表。
@@ -36,10 +45,12 @@ FileSpace233 的工程规则。改代码前先读这一页。
 
 | 包 / 文件 | 职责 | 不许做 |
 | --- | --- | --- |
-| `internal/fsx` | 目录读取、驱动器枚举、容量、排序、大小统计 | 依赖 `mygo` / `ui` |
+| `internal/fsx` | 目录读取、驱动器枚举、容量、排序、大小统计、复制/移动 | 依赖 `mygo` / `ui` |
 | `app.go` | 多面板状态、导航、历史、热键、托盘、持久化 | 直接画 UI |
-| `view.go` | Split 布局、列表、Inspector、主题 | 阻塞 I/O、直接 `os.ReadDir` |
-| `scripts/` | 构建、MSI、验收 | 隐藏失败退出码 |
+| `view.go` | Split 布局、列表、Inspector、玻璃面板 | 阻塞 I/O、直接 `os.ReadDir` |
+| `theme.go` | Apple Liquid Glass 色板、字体、`applyAppleUI` | 引入第二套主题源 |
+| `fileops.go` / `rename.go` / `syncselect.go` | 文件操作、批量重命名、同步选择 | 在 UI 线程做阻塞 I/O |
+| `scripts/` | 构建、MSI、验收、图标生成 | 隐藏失败退出码 |
 
 - 目录读取一律走 `fsx`；UI 线程不做阻塞 I/O。
 - 导航结果必须通过 `win.Update` 回 UI 线程，并用 `gen` 拒绝过期结果。
@@ -109,3 +120,5 @@ go run github.com/egoist/mygo/cmd/mygo@v0.10.0 install-skills .
 | 🐾 2026-11-26 15:56 | v0.2.0 | PASS | verify.ps1 |
 | 🐾 2026-11-26 15:57 | v0.2.0 | PASS | verify.ps1 |
 | 🐾 2026-11-26 16:00 | v0.2.0 | PASS | verify.ps1 |
+| 🐾 2026-11-26 18:02 | v0.3.0 | PASS | verify.ps1 |
+| 🐾 2026-11-26 18:33 | v0.3.0 | PASS | verify.ps1 |

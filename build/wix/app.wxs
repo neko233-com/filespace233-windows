@@ -3,7 +3,7 @@
   <Package
       Name="FileSpace233"
       Manufacturer="neko233-com"
-      Version="0.2.0"
+      Version="0.3.0"
       UpgradeCode="0B14EAFD-A83D-4C3A-B0EE-29EEA2CE63E3"
       Scope="perUser"
       Language="2052"

@@ -1,10 +1,17 @@
 package main
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"hash"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -103,22 +110,26 @@ type Pane struct {
 	history  []string
 	forward  []string
 	gen      int
+
+	selection  ui.Selection[string]
+	dirty      bool
+	reveal     string
+	scrollTo   string
+	lastAction time.Time
 }
 
 func newPane(dir string) *Pane {
-	p := &Pane{dir: dir, sortKey: "name", sortAsc: true, selected: -1}
-	p.entries, p.stats, _ = fsx.List(dir, false)
-	return p
+	return &Pane{dir: dir, sortKey: "name", sortAsc: true, selected: -1, dirty: true}
 }
 
-func (p *Pane) current() (fsx.Entry, bool) {
-	if p.selected < 0 || p.selected >= len(p.visible) {
-		return fsx.Entry{}, false
+func (p *Pane) invalidate() {
+	p.dirty = true
+}
+
+func (p *Pane) refreshVisible() {
+	if !p.dirty && p.visible != nil {
+		return
 	}
-	return p.visible[p.selected], true
-}
-
-func (p *Pane) filter() []fsx.Entry {
 	q := strings.ToLower(strings.TrimSpace(p.query))
 	out := make([]fsx.Entry, 0, len(p.entries))
 	for _, e := range p.entries {
@@ -128,6 +139,90 @@ func (p *Pane) filter() []fsx.Entry {
 		out = append(out, e)
 	}
 	fsx.Sort(out, p.sortKey, p.sortAsc)
+	p.visible = out
+	p.dirty = false
+}
+
+func (p *Pane) current() (fsx.Entry, bool) {
+	if p.selected < 0 || p.selected >= len(p.visible) {
+		return fsx.Entry{}, false
+	}
+	return p.visible[p.selected], true
+}
+
+func (p *Pane) resetView(clearSelection bool) {
+	p.selected = -1
+	p.list = ui.ListState{}
+	if clearSelection {
+		p.selection.Clear()
+	}
+	p.invalidate()
+}
+
+// chosenEntries returns the rows a file operation acts on: the multi-selection
+// in visible order, or the row under the cursor.
+func (p *Pane) chosenEntries() []fsx.Entry {
+	p.refreshVisible()
+	if p.selection.Len() > 0 {
+		out := make([]fsx.Entry, 0, p.selection.Len())
+		for _, e := range p.visible {
+			if p.selection.Has(e.Path) {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	if e, ok := p.current(); ok {
+		return []fsx.Entry{e}
+	}
+	return nil
+}
+
+func (p *Pane) chosenPaths() []string {
+	entries := p.chosenEntries()
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Path)
+	}
+	return out
+}
+
+func (p *Pane) chosenCount() int { return len(p.chosenEntries()) }
+
+func (p *Pane) hasVisible(path string) bool {
+	p.refreshVisible()
+	for _, e := range p.visible {
+		if samePath(e.Path, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Pane) pruneSelection() {
+	if p.selection.Len() == 0 {
+		return
+	}
+	p.refreshVisible()
+	var gone []string
+	for path := range p.selection.All() {
+		if !p.hasVisible(path) {
+			gone = append(gone, path)
+		}
+	}
+	for _, path := range gone {
+		p.selection.Remove(path)
+	}
+}
+
+func (p *Pane) selectionSnapshot() map[string]bool {
+	if p.selection.Len() == 0 {
+		return nil
+	}
+	out := make(map[string]bool, p.selection.Len())
+	for path := range p.selection.All() {
+		out[path] = true
+	}
 	return out
 }
 
@@ -139,10 +234,18 @@ type panePersist struct {
 }
 
 type persisted struct {
-	Mode   int           `json:"mode"`
-	Split  float64       `json:"split"`
-	Active int           `json:"active"`
-	Panes  []panePersist `json:"panes"`
+	Mode     int           `json:"mode"`
+	Split    float64       `json:"split"`
+	RowSplit float64       `json:"rowSplit"`
+	Active   int           `json:"active"`
+	Panes    []panePersist `json:"panes"`
+	Recent   []string      `json:"recent"`
+}
+
+type cachedDir struct {
+	entries []fsx.Entry
+	stats   fsx.Stats
+	at      time.Time
 }
 
 // App is the window's state. It lives on the UI thread.
@@ -152,18 +255,77 @@ type App struct {
 
 	panes     []*Pane
 	active    int
+	focusPane int
 	mode      int // 2 columns or 2x2 grid
 	split     float64
 	splitPct  float32
 	rowPct    float32
+	rowSlider float64
+
 	inspector bool
 	query     string
 
 	drives      []fsx.Drive
 	favorites   []favorite
+	recent      []string
 	hotkeyErr   string
 	hotkeyLabel string
 	quitting    bool
+
+	cache      map[string]cachedDir
+	cacheOrder []string
+	cacheCount int
+
+	clipMode  string
+	clipPaths []string
+
+	opBusy    bool
+	opLabel   string
+	opCurrent string
+	opDone    int
+	opTotal   int
+	opFailed  int
+	opErr     string
+
+	statusMsg string
+	statusErr bool
+
+	savePending bool
+
+	pathEdit  int
+	pathDraft string
+
+	promptOpen    bool
+	promptTitle   string
+	promptValue   string
+	promptHint    string
+	promptConfirm string
+	promptErr     string
+	promptAction  func(string) (string, error)
+
+	batchOpen    bool
+	batchEntries []fsx.Entry
+	batchPattern string
+	batchErr     string
+
+	confirmOpen   bool
+	confirmTitle  string
+	confirmBody   string
+	confirmAction func()
+
+	inspectKey    string
+	previewPath   string
+	previewBitmap *ui.Bitmap
+	previewText   string
+	previewDim    string
+	previewErr    string
+	previewLoad   bool
+
+	hashPath  string
+	hashValue string
+	hashErr   string
+	hashBusy  bool
+	hashAlgo  string
 }
 
 func NewApp() *App {
@@ -171,7 +333,11 @@ func NewApp() *App {
 	if err != nil || home == "" {
 		home = "C:\\"
 	}
-	a := &App{mode: 2, split: 0.5, splitPct: 50, rowPct: 50, active: 0, hotkeyLabel: "Ctrl+Win+E"}
+	a := &App{
+		mode: 2, split: 0.5, splitPct: 50, rowPct: 50, rowSlider: 0.5, active: 0, focusPane: 0,
+		hotkeyLabel: "Ctrl+Win+E", pathEdit: -1, hashAlgo: "SHA-256",
+		cache: map[string]cachedDir{},
+	}
 	for i := 0; i < 4; i++ {
 		a.panes = append(a.panes, newPane(home))
 	}
@@ -191,37 +357,59 @@ func (a *App) paneCount() int {
 }
 
 func (a *App) setActive(i int) {
-	if i < 0 || i >= a.paneCount() || i == a.active {
+	if i < 0 || i >= a.paneCount() {
+		return
+	}
+	if i == a.active {
+		a.focusPane = i
 		return
 	}
 	a.active = i
+	a.focusPane = i
 	a.query = a.panes[i].query
 }
 
-func (a *App) start(capturePath string) {
-	a.loadState()
-	for _, p := range a.panes {
-		if p.dir == "" {
-			continue
-		}
-		if entries, st, err := fsx.List(p.dir, p.hidden); err == nil {
-			p.entries, p.stats = entries, st
+func (a *App) otherPaneIndexes() []int {
+	var out []int
+	for i := 0; i < a.paneCount(); i++ {
+		if i != a.active {
+			out = append(out, i)
 		}
 	}
+	return out
+}
+
+func (a *App) start(capturePath string, captureQuad, captureInspector bool) {
+	a.loadState()
+	a.loadInitialPanes()
 	a.drives = fsx.Drives()
 	a.loadFavorites()
+	if captureQuad {
+		a.mode = 4
+		a.splitPct = 50
+		a.rowPct = 50
+		a.active = 0
+		a.query = a.panes[0].query
+	}
+	if captureInspector {
+		a.inspector = true
+		a.active = 0
+		a.query = a.panes[0].query
+	}
 	if capturePath != "" {
 		a.panes[0].selected = 2
+		a.panes[0].selection.Clear()
 		a.panes[1].selected = -1
+		a.panes[1].selection.Clear()
 	}
 	a.query = a.currentPane().query
 
 	a.win = mygo.NewWindow(mygo.WindowOptions{
 		Title:     "FileSpace233",
-		Width:     1380,
-		Height:    860,
-		MinWidth:  920,
-		MinHeight: 560,
+		Width:     1440,
+		Height:    900,
+		MinWidth:  960,
+		MinHeight: 600,
 		StateKey:  "main",
 		Content:   ui.View(a.view),
 	})
@@ -236,6 +424,7 @@ func (a *App) start(capturePath string) {
 
 	a.setupTray()
 	a.registerHotkey()
+	a.registerClipboardWatch()
 
 	if capturePath != "" {
 		go func() {
@@ -252,8 +441,39 @@ func (a *App) start(capturePath string) {
 	}
 }
 
+func (a *App) loadInitialPanes() {
+	loaded := map[string]cachedDir{}
+	for _, p := range a.panes {
+		if p.dir == "" {
+			continue
+		}
+		key := listingKey(p.dir, p.hidden)
+		if c, ok := loaded[key]; ok {
+			p.entries, p.stats = c.entries, c.stats
+			p.invalidate()
+			continue
+		}
+		if c, ok := a.cacheGet(p.dir, p.hidden); ok {
+			p.entries, p.stats = c.entries, c.stats
+			p.invalidate()
+			continue
+		}
+		entries, stats, err := fsx.List(p.dir, p.hidden)
+		if err != nil {
+			p.err = err.Error()
+			continue
+		}
+		c := cachedDir{entries: entries, stats: stats, at: time.Now()}
+		loaded[key] = c
+		a.cachePut(p.dir, p.hidden, entries, stats)
+		p.entries, p.stats = entries, stats
+		p.invalidate()
+	}
+}
+
 func (a *App) quit() {
 	a.quitting = true
+	a.save()
 	mygo.App.Quit()
 }
 
@@ -361,6 +581,10 @@ func (a *App) loadState() {
 		a.split = s.Split
 		a.splitPct = float32(s.Split * 100)
 	}
+	if s.RowSplit >= 0.25 && s.RowSplit <= 0.75 {
+		a.rowPct = float32(s.RowSplit * 100)
+		a.rowSlider = s.RowSplit
+	}
 	if s.Active >= 0 && s.Active < a.paneCount() {
 		a.active = s.Active
 	}
@@ -380,6 +604,14 @@ func (a *App) loadState() {
 		p.sortAsc = ps.SortAsc
 		p.hidden = ps.ShowHidden
 	}
+	for _, dir := range s.Recent {
+		if len(a.recent) >= 8 {
+			break
+		}
+		if _, err := os.Stat(dir); err == nil && !a.inRecent(dir) {
+			a.recent = append(a.recent, dir)
+		}
+	}
 }
 
 func (a *App) save() {
@@ -387,7 +619,10 @@ func (a *App) save() {
 	if path == "" {
 		return
 	}
-	s := persisted{Mode: a.mode, Split: a.split, Active: a.active}
+	s := persisted{
+		Mode: a.mode, Split: a.split, RowSplit: float64(a.rowPct) / 100,
+		Active: a.active, Recent: a.recent,
+	}
 	for _, p := range a.panes {
 		s.Panes = append(s.Panes, panePersist{
 			Dir: p.dir, SortKey: p.sortKey, SortAsc: p.sortAsc, ShowHidden: p.hidden,
@@ -398,6 +633,101 @@ func (a *App) save() {
 		return
 	}
 	_ = os.WriteFile(path, data, 0o644)
+}
+
+// saveSoon coalesces the dozens of state writes produced while a splitter or
+// slider is being dragged into one write.
+func (a *App) saveSoon() {
+	if a.savePending {
+		return
+	}
+	a.savePending = true
+	time.AfterFunc(180*time.Millisecond, func() {
+		if a.win != nil {
+			a.win.Update(func() {
+				a.savePending = false
+				a.save()
+			})
+		}
+	})
+}
+
+func (a *App) inRecent(dir string) bool {
+	for _, r := range a.recent {
+		if samePath(r, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) pushRecent(dir string) {
+	if dir == "" {
+		return
+	}
+	var kept []string
+	for _, r := range a.recent {
+		if !samePath(r, dir) {
+			kept = append(kept, r)
+		}
+	}
+	a.recent = append([]string{dir}, kept...)
+	if len(a.recent) > 8 {
+		a.recent = a.recent[:8]
+	}
+}
+
+func listingKey(dir string, hidden bool) string {
+	return strings.ToLower(filepath.Clean(dir)) + "|" + fmt.Sprintf("%t", hidden)
+}
+
+func (a *App) cacheGet(dir string, hidden bool) (cachedDir, bool) {
+	c, ok := a.cache[listingKey(dir, hidden)]
+	return c, ok
+}
+
+func (a *App) cachePut(dir string, hidden bool, entries []fsx.Entry, stats fsx.Stats) {
+	key := listingKey(dir, hidden)
+	if old, ok := a.cache[key]; ok {
+		a.cacheCount -= len(old.entries)
+		for i, k := range a.cacheOrder {
+			if k == key {
+				a.cacheOrder = append(a.cacheOrder[:i], a.cacheOrder[i+1:]...)
+				break
+			}
+		}
+	}
+	a.cache[key] = cachedDir{entries: entries, stats: stats, at: time.Now()}
+	a.cacheOrder = append(a.cacheOrder, key)
+	a.cacheCount += len(entries)
+	for len(a.cacheOrder) > 64 || a.cacheCount > 200000 {
+		oldest := a.cacheOrder[0]
+		a.cacheOrder = a.cacheOrder[1:]
+		if old, ok := a.cache[oldest]; ok {
+			a.cacheCount -= len(old.entries)
+			delete(a.cache, oldest)
+		}
+	}
+}
+
+func (a *App) cacheDrop(key string) {
+	if old, ok := a.cache[key]; ok {
+		a.cacheCount -= len(old.entries)
+		delete(a.cache, key)
+	}
+}
+
+func (a *App) invalidateCache(dir string) {
+	prefix := strings.ToLower(filepath.Clean(dir)) + "|"
+	var kept []string
+	for _, key := range a.cacheOrder {
+		if strings.HasPrefix(key, prefix) {
+			a.cacheDrop(key)
+			continue
+		}
+		kept = append(kept, key)
+	}
+	a.cacheOrder = kept
 }
 
 func (a *App) navigate(p *Pane, dir string, record bool) {
@@ -413,6 +743,30 @@ func (a *App) navigate(p *Pane, dir string, record bool) {
 	gen := p.gen
 	old := p.dir
 	hidden := p.hidden
+	if c, ok := a.cacheGet(abs, hidden); ok {
+		p.loading = false
+		p.err = ""
+		p.dir = abs
+		p.entries = c.entries
+		p.stats = c.stats
+		p.invalidate()
+		p.resetView(true)
+		p.query = ""
+		if record && old != "" && old != abs {
+			p.history = append(p.history, old)
+			p.forward = nil
+		}
+		if p == a.currentPane() {
+			a.query = ""
+		}
+		a.pushRecent(abs)
+		a.save()
+		if time.Since(c.at) > 10*time.Second {
+			a.refreshQuiet(p, abs, "")
+		}
+		_ = gen
+		return
+	}
 	p.loading = true
 	p.err = ""
 	go func() {
@@ -433,13 +787,46 @@ func (a *App) navigate(p *Pane, dir string, record bool) {
 			p.dir = abs
 			p.entries = entries
 			p.stats = st
-			p.selected = -1
-			p.list = ui.ListState{}
+			p.invalidate()
+			p.resetView(true)
 			p.query = ""
 			if a.currentPane() == p {
 				a.query = ""
 			}
+			a.cachePut(abs, hidden, entries, st)
+			a.pushRecent(abs)
 			a.save()
+		})
+	}()
+}
+
+func (a *App) refreshQuiet(p *Pane, dir, keepPath string) {
+	p.gen++
+	gen := p.gen
+	hidden := p.hidden
+	go func() {
+		entries, st, err := fsx.List(dir, hidden)
+		if err != nil {
+			return
+		}
+		a.win.Update(func() {
+			if gen != p.gen || !samePath(p.dir, dir) {
+				return
+			}
+			p.entries, p.stats = entries, st
+			p.invalidate()
+			a.cachePut(dir, hidden, entries, st)
+			if keepPath != "" {
+				p.refreshVisible()
+				p.selected = -1
+				for i, e := range p.visible {
+					if samePath(e.Path, keepPath) {
+						p.selected = i
+						break
+					}
+				}
+			}
+			p.pruneSelection()
 		})
 	}()
 }
@@ -449,6 +836,11 @@ func (a *App) refresh(p *Pane) {
 	if dir == "" {
 		return
 	}
+	keepPath := ""
+	if e, ok := p.current(); ok {
+		keepPath = e.Path
+	}
+	keepSel := p.selectionSnapshot()
 	p.gen++
 	gen := p.gen
 	hidden := p.hidden
@@ -467,10 +859,151 @@ func (a *App) refresh(p *Pane) {
 			}
 			p.entries = entries
 			p.stats = st
-			p.selected = -1
-			p.list = ui.ListState{}
+			p.invalidate()
+			p.resetView(true)
+			a.cachePut(dir, hidden, entries, st)
+			reveal := p.reveal != ""
+			if reveal {
+				keepPath = p.reveal
+				p.reveal = ""
+				keepSel = nil
+			}
+			p.refreshVisible()
+			if keepPath != "" || len(keepSel) > 0 {
+				for i, e := range p.visible {
+					if keepSel != nil && keepSel[e.Path] {
+						p.selection.Add(e.Path)
+						if p.selected < 0 {
+							p.selected = i
+						}
+					}
+					if reveal && samePath(e.Path, keepPath) {
+						p.selection.Add(e.Path)
+					}
+					if samePath(e.Path, keepPath) {
+						p.selected = i
+						p.scrollTo = e.Path
+					}
+				}
+			}
+			p.pruneSelection()
 		})
 	}()
+}
+
+func (a *App) refreshGroup(dirs []string, revealPath string) {
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		key := strings.ToLower(filepath.Clean(dir))
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		var group []*Pane
+		for _, p := range a.panes {
+			if samePath(p.dir, dir) {
+				group = append(group, p)
+			}
+		}
+		if len(group) == 0 {
+			continue
+		}
+		for _, p := range group {
+			if revealPath != "" && samePath(filepath.Dir(revealPath), p.dir) {
+				p.reveal = revealPath
+			}
+		}
+		a.refreshPaneGroup(dir, group)
+	}
+}
+
+type refreshSnap struct {
+	p        *Pane
+	gen      int
+	keepPath string
+	keepSel  map[string]bool
+}
+
+func (a *App) refreshPaneGroup(dir string, group []*Pane) {
+	byHidden := map[bool][]refreshSnap{}
+	for _, p := range group {
+		keepPath := ""
+		if e, ok := p.current(); ok {
+			keepPath = e.Path
+		}
+		snap := refreshSnap{p: p, keepPath: keepPath, keepSel: p.selectionSnapshot()}
+		p.gen++
+		snap.gen = p.gen
+		p.loading = true
+		p.err = ""
+		byHidden[p.hidden] = append(byHidden[p.hidden], snap)
+	}
+	for hidden, snaps := range byHidden {
+		hidden := hidden
+		snaps := snaps
+		go func() {
+			entries, st, err := fsx.List(dir, hidden)
+			a.win.Update(func() {
+				if err == nil {
+					a.cachePut(dir, hidden, entries, st)
+				}
+				for _, snap := range snaps {
+					p := snap.p
+					if snap.gen != p.gen || !samePath(p.dir, dir) {
+						continue
+					}
+					p.loading = false
+					if err != nil {
+						p.err = err.Error()
+						continue
+					}
+					p.entries = entries
+					p.stats = st
+					p.invalidate()
+					p.resetView(true)
+					reveal, keepPath, keepSel := false, snap.keepPath, snap.keepSel
+					if p.reveal != "" {
+						reveal = true
+						keepPath = p.reveal
+						p.reveal = ""
+						keepSel = nil
+					}
+					p.refreshVisible()
+					if keepPath != "" || len(keepSel) > 0 {
+						for i, e := range p.visible {
+							if keepSel != nil && keepSel[e.Path] {
+								p.selection.Add(e.Path)
+								if p.selected < 0 {
+									p.selected = i
+								}
+							}
+							if reveal && samePath(e.Path, keepPath) {
+								p.selection.Add(e.Path)
+							}
+							if samePath(e.Path, keepPath) {
+								p.selected = i
+								p.scrollTo = e.Path
+							}
+						}
+					}
+					p.pruneSelection()
+				}
+			})
+		}()
+	}
+}
+
+func (a *App) refreshDirs(dirs ...string) {
+	a.refreshGroup(dirs, "")
+}
+
+func (a *App) refreshAndReveal(path string) {
+	dir := filepath.Dir(path)
+	a.invalidateCache(dir)
+	a.refreshGroup([]string{dir}, path)
 }
 
 func (a *App) back(p *Pane) {
@@ -502,7 +1035,7 @@ func (a *App) up(p *Pane) {
 
 func (a *App) open(p *Pane, path string) {
 	for _, e := range p.entries {
-		if e.Path == path {
+		if samePath(e.Path, path) {
 			if e.IsDir {
 				a.navigate(p, e.Path, true)
 			} else if err := mygo.Shell.OpenPath(e.Path); err != nil {
@@ -524,5 +1057,170 @@ func (a *App) copyPath(path string) {
 		if p := a.currentPane(); p != nil {
 			p.err = err.Error()
 		}
+	}
+}
+
+func (a *App) copyPaths(paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	if err := mygo.Clipboard.Write(transfer.TextData(strings.Join(paths, "\r\n"))); err != nil {
+		a.statusMsg = "复制路径失败：" + err.Error()
+		a.statusErr = true
+	}
+}
+
+func (a *App) setQuery(p *Pane, q string) {
+	if p.query == q {
+		return
+	}
+	p.query = q
+	p.invalidate()
+	p.selected = -1
+	p.selection.Clear()
+	p.list = ui.ListState{}
+}
+
+func (a *App) resort(p *Pane) {
+	keep := ""
+	if e, ok := p.current(); ok {
+		keep = e.Path
+	}
+	p.invalidate()
+	p.refreshVisible()
+	p.selected = -1
+	for i, e := range p.visible {
+		if samePath(e.Path, keep) {
+			p.selected = i
+			break
+		}
+	}
+}
+
+func (a *App) loadClipboardFiles() ([]string, bool) {
+	data, err := mygo.Clipboard.Read()
+	if err != nil {
+		return nil, false
+	}
+	files, err := data.Files()
+	if err != nil || len(files) == 0 {
+		return nil, false
+	}
+	a.clipMode = "copy"
+	a.clipPaths = append([]string(nil), files...)
+	return files, true
+}
+
+func (a *App) reconcileClipboard() {
+	if len(a.clipPaths) == 0 {
+		return
+	}
+	files, err := mygo.Clipboard.ReadFiles()
+	if err != nil || !samePathSet(a.clipPaths, files) {
+		a.clipMode = ""
+		a.clipPaths = nil
+	}
+}
+
+func samePathSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := make(map[string]int, len(a))
+	for _, p := range a {
+		set[strings.ToLower(filepath.Clean(p))]++
+	}
+	for _, p := range b {
+		key := strings.ToLower(filepath.Clean(p))
+		if set[key] == 0 {
+			return false
+		}
+		set[key]--
+	}
+	return true
+}
+
+func (a *App) registerClipboardWatch() {
+	mygo.Clipboard.OnChanged(func() {
+		a.win.Update(func() { a.reconcileClipboard() })
+	})
+}
+
+func (a *App) startHash(path string) {
+	a.startHashAlgo(a.hashAlgo, path)
+}
+
+func hashNew(algo string) hash.Hash {
+	switch algo {
+	case "MD5":
+		return md5.New()
+	case "SHA-1":
+		return sha1.New()
+	case "SHA-512":
+		return sha512.New()
+	default:
+		return sha256.New()
+	}
+}
+
+func (a *App) startHashAlgo(algo, path string) {
+	if path == "" || a.hashBusy {
+		return
+	}
+	if algo == "" {
+		algo = "SHA-256"
+	}
+	a.hashAlgo = algo
+	a.hashPath = path
+	a.hashValue = ""
+	a.hashErr = ""
+	a.hashBusy = true
+	go func() {
+		f, err := os.Open(path)
+		if err != nil {
+			a.win.Update(func() {
+				if a.hashPath != path {
+					return
+				}
+				a.hashBusy = false
+				a.hashErr = err.Error()
+			})
+			return
+		}
+		defer f.Close()
+		h := hashNew(algo)
+		if _, err := io.Copy(h, f); err != nil {
+			a.win.Update(func() {
+				if a.hashPath != path {
+					return
+				}
+				a.hashBusy = false
+				a.hashErr = err.Error()
+			})
+			return
+		}
+		sum := h.Sum(nil)
+		a.win.Update(func() {
+			if a.hashPath != path {
+				return
+			}
+			a.hashBusy = false
+			a.hashValue = fmt.Sprintf("%x", sum)
+		})
+	}()
+}
+
+func (a *App) openTerminal(dir string) {
+	if dir == "" {
+		return
+	}
+	if err := exec.Command("wt.exe", "-d", dir).Start(); err == nil {
+		return
+	}
+	quoted := strings.ReplaceAll(dir, "'", "''")
+	cmd := exec.Command("powershell.exe", "-NoExit", "-Command", "Set-Location -LiteralPath '"+quoted+"'")
+	if err := cmd.Start(); err != nil {
+		a.statusMsg = "无法打开终端：" + err.Error()
+		a.statusErr = true
 	}
 }

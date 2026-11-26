@@ -92,6 +92,9 @@ func List(dir string, hidden bool) ([]Entry, Stats, error) {
 		if err != nil {
 			continue
 		}
+		if !hidden && isHidden(info) {
+			continue
+		}
 		entry := Entry{
 			Name:    name,
 			Path:    filepath.Join(dir, name),
@@ -137,12 +140,19 @@ func Parent(dir string) string {
 	return parent
 }
 
+// isHidden reports the Windows hidden attribute. Dot-prefixed names are
+// handled by the caller because they are hidden even without the attribute.
+func isHidden(info os.FileInfo) bool {
+	if data, ok := info.Sys().(*syscall.Win32FileAttributeData); ok {
+		return data.FileAttributes&syscall.FILE_ATTRIBUTE_HIDDEN != 0
+	}
+	return false
+}
+
 // Sort orders entries with folders first, then by key ("name", "size" or
 // "modified").
 func Sort(entries []Entry, key string, asc bool) {
-	sorted := append([]Entry(nil), entries...)
-	sortEntries(sorted, key, asc)
-	copy(entries, sorted)
+	sortEntries(entries, key, asc)
 }
 
 func sortEntries(entries []Entry, key string, asc bool) {

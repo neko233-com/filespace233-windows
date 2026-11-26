@@ -62,3 +62,45 @@ func TestParentAtRoot(t *testing.T) {
 		t.Fatalf("Parent(%q) = %q", root, got)
 	}
 }
+
+func TestCopyPathTreeAndRefuseOverwrite(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	if err := os.MkdirAll(filepath.Join(src, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "nested", "a.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(root, "dst")
+	if err := CopyPath(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dst, "nested", "a.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello" {
+		t.Fatalf("copied data = %q", data)
+	}
+	if err := CopyPath(src, dst); err == nil {
+		t.Fatal("copy over an existing folder succeeded")
+	}
+}
+
+func TestUniqueChildAndDuplicateName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes (2).txt"), []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := UniqueChild(dir, "notes.txt")
+	if want := filepath.Join(dir, "notes (3).txt"); got != want {
+		t.Fatalf("UniqueChild = %q, want %q", got, want)
+	}
+	if name := DuplicateName(filepath.Join(dir, "notes.txt")); name != "notes - 副本.txt" {
+		t.Fatalf("DuplicateName = %q", name)
+	}
+}
