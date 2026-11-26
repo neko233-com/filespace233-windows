@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="FileSpace233"
+      Manufacturer="neko233-com"
+      Version="0.1.0"
+      UpgradeCode="0B14EAFD-A83D-4C3A-B0EE-29EEA2CE63E3"
+      Scope="perUser"
+      Language="2052"
+      Codepage="936">
+
+    <SummaryInformation Description="FileSpace233 文件夹管理器" Manufacturer="neko233-com" />
+
+    <MajorUpgrade DowngradeErrorMessage="已安装更高版本的 FileSpace233，请先卸载。" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ALLUSERS" Value="2" />
+    <Property Id="MSIINSTALLPERUSER" Value="1" />
+
+    <Icon Id="AppIcon" SourceFile="resources\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/neko233-com/FileSpace233-windows" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="FileSpace233" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="FileSpace233" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExe" Guid="*">
+        <File Id="MainExeFile"
+              Source="dist\windows-amd64\FileSpace233.exe"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="TrayIcon" Guid="*">
+        <File Id="TrayIconFile" Source="resources\tray.png" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Guid="*">
+      <Shortcut Id="StartMenuLink"
+                Name="FileSpace233"
+                Description="文件夹管理器"
+                Target="[INSTALLFOLDER]FileSpace233.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\neko233\FileSpace233"
+                     Name="startMenu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
+      <Shortcut Id="DesktopLink"
+                Name="FileSpace233"
+                Description="文件夹管理器"
+                Target="[INSTALLFOLDER]FileSpace233.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RegistryValue Root="HKCU" Key="Software\neko233\FileSpace233"
+                     Name="desktop" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Package>
+</Wix>
+
