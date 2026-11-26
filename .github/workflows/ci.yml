@@ -1,57 +1,47 @@
-name: CI
+name: ci
 
 on:
   push:
-    branches: [main]
   pull_request:
 
-permissions:
-  contents: read
-
 jobs:
-  validate:
+  windows-amd64-msi:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-go@v5
         with:
-          dotnet-version: 10.0.x
+          go-version: "1.27.4"
 
-      - name: Restore
-        run: dotnet restore
+      - name: Vet
+        env:
+          CGO_ENABLED: "0"
+        run: go vet ./...
 
-      - name: Install WiX Toolset
-        shell: pwsh
+      - name: Test
+        env:
+          CGO_ENABLED: "0"
+        run: go test -count=1 ./...
+
+      - name: Build app
+        env:
+          CGO_ENABLED: "0"
+        run: go run github.com/egoist/mygo/cmd/mygo@v0.10.0 build -platform windows/amd64 -skip-installer
+
+      - name: Install WiX 5
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Build MSI
+        shell: powershell
         run: |
-          dotnet tool install --global wix --version 7.0.0 --add-source https://api.nuget.org/v3/index.json
-          wix eula accept wix7
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          powershell -ExecutionPolicy Bypass -File .\scripts\build-msi.ps1 -SkipAppBuild
 
-      - name: Build MSI release artifacts
-        shell: pwsh
-        run: ./scripts/build-release.ps1 -Version 0.1.0
-
-      - name: Validate workflow syntax
-        shell: pwsh
-        run: |
-          if (Get-Command actionlint -ErrorAction SilentlyContinue) {
-            ./scripts/validate-github-actions.ps1
-          } else {
-            Write-Host 'actionlint is not installed on the hosted runner; workflow syntax is checked by the repository policy job.'
-          }
-
-      - name: Validate MSI release artifacts
-        shell: pwsh
-        run: ./scripts/validate-release.ps1 -ReleaseDirectory artifacts/release
-
-      - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: filespace-msi-package
+          name: FileSpace233-windows-amd64
           path: |
-            artifacts/release/*.msi
-            artifacts/release/*.sha256
-            artifacts/release/latest.json
-          if-no-files-found: error
+            dist/FileSpace233-*-x64.msi
+            dist/SHA256SUMS.txt
+            dist/windows-amd64/FileSpace233.exe

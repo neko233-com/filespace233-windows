@@ -1,15 +1,18 @@
-## Build output
-bin/
-obj/
-artifacts/
-.vs/
+# build output
+dist/
+*.msi
+*.wixpdb
+*.exe
+filespace233.exe
 
-## IDE and user state
-*.user
-*.suo
+# local screenshots and generated icons
+build/shot.png
+build/icon-256.png
+
+# go
+*.test
+
+# editors
+.vscode/
 .idea/
-
-## Local packaging
-AppPackages/
-BundleArtifacts/
-TestResults/
+*.swp
