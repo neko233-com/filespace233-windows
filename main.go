@@ -8,7 +8,7 @@ import (
 	"github.com/egoist/mygo"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func main() {
 	capture := flag.String("capture", "", "capture the first frame to this PNG and exit")

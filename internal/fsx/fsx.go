@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 // Entry is one child of a folder.
@@ -30,8 +32,47 @@ type Stats struct {
 
 // Drive is a Windows volume that is currently reachable.
 type Drive struct {
-	Name string
-	Path string
+	Name  string
+	Path  string
+	Total uint64
+	Free  uint64
+}
+
+// Used reports the used bytes on the volume.
+func (d Drive) Used() uint64 {
+	if d.Total < d.Free {
+		return 0
+	}
+	return d.Total - d.Free
+}
+
+// UsedPercent reports the used share of the volume, 0 when unknown.
+func (d Drive) UsedPercent() float64 {
+	if d.Total == 0 {
+		return 0
+	}
+	return float64(d.Used()) / float64(d.Total)
+}
+
+var getDiskFreeSpaceEx = syscall.NewLazyDLL("kernel32.dll").NewProc("GetDiskFreeSpaceExW")
+
+// DiskSpace returns the total and free bytes of the volume holding path.
+func DiskSpace(path string) (total, free uint64, err error) {
+	p, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	var available, totalBytes, totalFree uint64
+	r, _, callErr := getDiskFreeSpaceEx.Call(
+		uintptr(unsafe.Pointer(p)),
+		uintptr(unsafe.Pointer(&available)),
+		uintptr(unsafe.Pointer(&totalBytes)),
+		uintptr(unsafe.Pointer(&totalFree)),
+	)
+	if r == 0 {
+		return 0, 0, callErr
+	}
+	return totalBytes, totalFree, nil
 }
 
 // List reads dir, skipping hidden names when hidden is false.
@@ -72,13 +113,15 @@ func List(dir string, hidden bool) ([]Entry, Stats, error) {
 	return out, st, nil
 }
 
-// Drives lists the reachable Windows drive letters.
+// Drives lists the reachable Windows drive letters with their capacity.
 func Drives() []Drive {
 	var out []Drive
 	for c := 'A'; c <= 'Z'; c++ {
 		p := string(c) + ":\\"
 		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			out = append(out, Drive{Name: string(c) + ":", Path: p})
+			d := Drive{Name: string(c) + ":", Path: p}
+			d.Total, d.Free, _ = DiskSpace(p)
+			out = append(out, d)
 		}
 	}
 	return out

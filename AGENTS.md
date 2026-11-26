@@ -18,13 +18,27 @@ FileSpace233 的工程规则。改代码前先读这一页。
 - `mygo.App.OnWindowAllClosed(func(){})` 保活；再次启动用 `RequestSingleInstanceLock` 聚焦已有窗口，不再起第二个进程。
 - 不允许把"关闭到托盘"改成"关闭即退出"，也不允许隐藏托盘图标。
 
+## 多面板与交互（必须保持）
+
+- `App.panes` 始终保留 4 个独立 `Pane`；`mode=2` 用前两个，`mode=4` 用 2×2。默认 `mode=2`、`split=0.5`。
+- 分栏必须用 `ui.SplitPercent` / `ui.SplitVerticalPercent`，不要手写 Row 百分比布局；`splitPct` 与底部 slider 的 `split` 双向同步并持久化。
+- 每个 `paneView` 必须先 `c.Key("pane-N")` 隔离控件身份；每个 `ui.List` 再用 `c.Key("files")`。否则多个列表共享选择和焦点状态。
+- 活动面板用 `tk.Info` 2px 边框；非活动面板 1px `tk.BorderSecondary`。
+- 全局热键 `Ctrl+Win+E`：先 `GlobalShortcut.RegisterWith("Ctrl+Super+E")`；被占用时用 `installHotkeyHook()` 低级键盘钩子兜底，钩子内 `showWindow()` 并吞掉按键。不要删掉兜底。
+- Inspector 默认隐藏，只能从右下角 `PanelRight` 按钮或面板内 X 打开/关闭；不要默认展开。
+- 侧边栏盘符必须显示容量进度条和 `已用 / 总量 · 百分比`；进度条用 `Grow(used)` + `Grow(1-used)`，不要用 `WidthPercent`（会被 Row 拉满）。
+- 选中行：`ui.List` 会给选中行铺 `Theme.Accent` 并设 `AccentText`。本项目 `appTheme` 把 Accent 设为 Info 蓝、AccentText 白色、InactiveAccent 也设为 Info；行内文字/图标在选中时必须显式用 `tk.PrimaryForeground`，否则会出现黑底黑字。
+- 不要再使用 `tk.PrimaryFillTertiary` 作选中底色。
+- 列宽随面板宽度收敛：`paneCompact` 在窄于 40% 时隐藏“类型”并用紧凑尺寸，`paneNarrow` 在窄于 32% 时只留“名称”，防止表头换行。
+- 面包屑在紧凑面板只保留根 + 当前段，并固定 28px 高度 + `Clip()`，禁止换行压到列表。
+
 ## 分层
 
 | 包 / 文件 | 职责 | 不许做 |
 | --- | --- | --- |
-| `internal/fsx` | 目录读取、驱动器枚举、排序、大小统计 | 依赖 `mygo` / `ui` |
-| `app.go` | 状态、导航、历史、持久化、托盘 | 直接画 UI |
-| `view.go` | 视图与交互 | 阻塞 I/O、直接 `os.ReadDir` |
+| `internal/fsx` | 目录读取、驱动器枚举、容量、排序、大小统计 | 依赖 `mygo` / `ui` |
+| `app.go` | 多面板状态、导航、历史、热键、托盘、持久化 | 直接画 UI |
+| `view.go` | Split 布局、列表、Inspector、主题 | 阻塞 I/O、直接 `os.ReadDir` |
 | `scripts/` | 构建、MSI、验收 | 隐藏失败退出码 |
 
 - 目录读取一律走 `fsx`；UI 线程不做阻塞 I/O。
@@ -92,3 +106,6 @@ go run github.com/egoist/mygo/cmd/mygo@v0.10.0 install-skills .
 | --- | --- | --- | --- |
 | 🐾 2026-11-26 14:58 | v0.1.0 | PASS | verify.ps1 |
 | 🐾 2026-11-26 15:14 | v0.1.0 | PASS | verify.ps1 |
+| 🐾 2026-11-26 15:56 | v0.2.0 | PASS | verify.ps1 |
+| 🐾 2026-11-26 15:57 | v0.2.0 | PASS | verify.ps1 |
+| 🐾 2026-11-26 16:00 | v0.2.0 | PASS | verify.ps1 |

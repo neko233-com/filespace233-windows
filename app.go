@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
@@ -20,17 +23,126 @@ var iconPNG []byte
 
 var logoBitmap, _ = ui.DecodeBitmap(iconPNG)
 
+var (
+	user32               = syscall.NewLazyDLL("user32.dll")
+	procSetWindowsHookEx = user32.NewProc("SetWindowsHookExW")
+	procCallNextHookEx   = user32.NewProc("CallNextHookEx")
+	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
+
+	hotkeyHook      uintptr
+	hotkeyCallback  uintptr
+	hotkeyTargetApp *App
+)
+
+type keyboardHookData struct {
+	VkCode    uint32
+	ScanCode  uint32
+	Flags     uint32
+	Time      uint32
+	ExtraInfo uintptr
+}
+
+func hookData(p uintptr) *keyboardHookData {
+	return (*keyboardHookData)(*(*unsafe.Pointer)(unsafe.Pointer(&p)))
+}
+
+func keyDown(vk uintptr) bool {
+	ret, _, _ := procGetAsyncKeyState.Call(vk)
+	return int32(uint32(ret))&0x8000 != 0
+}
+
+// keyboardHookProc intercepts Ctrl+Win+E when another app already owns the
+// RegisterHotKey slot for it. MyGo itself registers first; this is the fallback.
+func keyboardHookProc(nCode, wParam, lParam uintptr) uintptr {
+	if nCode == 0 && (wParam == 0x0100 || wParam == 0x0104) {
+		k := hookData(lParam)
+		if k.VkCode == 0x45 && keyDown(0x11) && (keyDown(0x5B) || keyDown(0x5C)) {
+			if hotkeyTargetApp != nil {
+				hotkeyTargetApp.showWindow()
+			}
+			return 1
+		}
+	}
+	ret, _, _ := procCallNextHookEx.Call(0, nCode, wParam, lParam)
+	return ret
+}
+
+func (a *App) installHotkeyHook() bool {
+	hotkeyTargetApp = a
+	if hotkeyCallback == 0 {
+		hotkeyCallback = syscall.NewCallback(keyboardHookProc)
+	}
+	h, _, _ := procSetWindowsHookEx.Call(13, hotkeyCallback, 0, 0) // WH_KEYBOARD_LL
+	if h == 0 {
+		return false
+	}
+	hotkeyHook = h
+	return true
+}
+
 type favorite struct {
 	Label string
 	Path  string
 	Kind  string
 }
 
-type persisted struct {
+// Pane is one independent folder view.
+type Pane struct {
+	dir      string
+	entries  []fsx.Entry
+	visible  []fsx.Entry
+	stats    fsx.Stats
+	query    string
+	sortKey  string
+	sortAsc  bool
+	hidden   bool
+	loading  bool
+	err      string
+	selected int
+	list     ui.ListState
+	history  []string
+	forward  []string
+	gen      int
+}
+
+func newPane(dir string) *Pane {
+	p := &Pane{dir: dir, sortKey: "name", sortAsc: true, selected: -1}
+	p.entries, p.stats, _ = fsx.List(dir, false)
+	return p
+}
+
+func (p *Pane) current() (fsx.Entry, bool) {
+	if p.selected < 0 || p.selected >= len(p.visible) {
+		return fsx.Entry{}, false
+	}
+	return p.visible[p.selected], true
+}
+
+func (p *Pane) filter() []fsx.Entry {
+	q := strings.ToLower(strings.TrimSpace(p.query))
+	out := make([]fsx.Entry, 0, len(p.entries))
+	for _, e := range p.entries {
+		if q != "" && !strings.Contains(strings.ToLower(e.Name), q) {
+			continue
+		}
+		out = append(out, e)
+	}
+	fsx.Sort(out, p.sortKey, p.sortAsc)
+	return out
+}
+
+type panePersist struct {
 	Dir        string `json:"dir"`
 	SortKey    string `json:"sortKey"`
 	SortAsc    bool   `json:"sortAsc"`
 	ShowHidden bool   `json:"showHidden"`
+}
+
+type persisted struct {
+	Mode   int           `json:"mode"`
+	Split  float64       `json:"split"`
+	Active int           `json:"active"`
+	Panes  []panePersist `json:"panes"`
 }
 
 // App is the window's state. It lives on the UI thread.
@@ -38,59 +150,78 @@ type App struct {
 	win  *mygo.Window
 	tray *mygo.Tray
 
-	dir       string
-	entries   []fsx.Entry
-	visible   []fsx.Entry
-	stats     fsx.Stats
-	drives    []fsx.Drive
-	favorites []favorite
+	panes     []*Pane
+	active    int
+	mode      int // 2 columns or 2x2 grid
+	split     float64
+	splitPct  float32
+	rowPct    float32
+	inspector bool
+	query     string
 
-	query      string
-	sortKey    string
-	sortAsc    bool
-	showHidden bool
-
-	loading  bool
-	err      string
-	selected int
-	list     ui.ListState
-
-	history  []string
-	forward  []string
-	gen      int
-	quitting bool
+	drives      []fsx.Drive
+	favorites   []favorite
+	hotkeyErr   string
+	hotkeyLabel string
+	quitting    bool
 }
 
 func NewApp() *App {
-	a := &App{sortKey: "name", sortAsc: true, selected: -1}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		home = "C:\\"
 	}
-	a.dir = home
-	a.entries, a.stats, _ = fsx.List(home, false)
+	a := &App{mode: 2, split: 0.5, splitPct: 50, rowPct: 50, active: 0, hotkeyLabel: "Ctrl+Win+E"}
+	for i := 0; i < 4; i++ {
+		a.panes = append(a.panes, newPane(home))
+	}
 	a.drives = fsx.Drives()
 	return a
 }
 
+func (a *App) currentPane() *Pane {
+	return a.panes[a.active]
+}
+
+func (a *App) paneCount() int {
+	if a.mode == 4 {
+		return 4
+	}
+	return 2
+}
+
+func (a *App) setActive(i int) {
+	if i < 0 || i >= a.paneCount() || i == a.active {
+		return
+	}
+	a.active = i
+	a.query = a.panes[i].query
+}
+
 func (a *App) start(capturePath string) {
 	a.loadState()
-	if a.dir != "" {
-		if entries, st, err := fsx.List(a.dir, a.showHidden); err == nil {
-			a.entries, a.stats = entries, st
-		} else if home, e := os.UserHomeDir(); e == nil {
-			a.dir = home
-			a.entries, a.stats, _ = fsx.List(home, a.showHidden)
+	for _, p := range a.panes {
+		if p.dir == "" {
+			continue
+		}
+		if entries, st, err := fsx.List(p.dir, p.hidden); err == nil {
+			p.entries, p.stats = entries, st
 		}
 	}
+	a.drives = fsx.Drives()
 	a.loadFavorites()
+	if capturePath != "" {
+		a.panes[0].selected = 2
+		a.panes[1].selected = -1
+	}
+	a.query = a.currentPane().query
 
 	a.win = mygo.NewWindow(mygo.WindowOptions{
 		Title:     "FileSpace233",
-		Width:     1180,
-		Height:    760,
-		MinWidth:  880,
-		MinHeight: 540,
+		Width:     1380,
+		Height:    860,
+		MinWidth:  920,
+		MinHeight: 560,
 		StateKey:  "main",
 		Content:   ui.View(a.view),
 	})
@@ -104,6 +235,7 @@ func (a *App) start(capturePath string) {
 	})
 
 	a.setupTray()
+	a.registerHotkey()
 
 	if capturePath != "" {
 		go func() {
@@ -123,6 +255,29 @@ func (a *App) start(capturePath string) {
 func (a *App) quit() {
 	a.quitting = true
 	mygo.App.Quit()
+}
+
+func (a *App) registerHotkey() {
+	err := mygo.GlobalShortcut.RegisterWith("Ctrl+Super+E", mygo.GlobalShortcutOptions{
+		Description: "打开 FileSpace233",
+	}, a.showWindow)
+	if err == nil {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "hotkey Ctrl+Win+E fallback:", err)
+	if a.installHotkeyHook() {
+		fmt.Fprintln(os.Stderr, "hotkey Ctrl+Win+E: using keyboard hook")
+		return
+	}
+	err2 := mygo.GlobalShortcut.RegisterWith("Ctrl+Alt+E", mygo.GlobalShortcutOptions{
+		Description: "打开 FileSpace233",
+	}, a.showWindow)
+	if err2 == nil {
+		a.hotkeyLabel = "Ctrl+Alt+E"
+		return
+	}
+	a.hotkeyErr = err.Error()
+	fmt.Fprintln(os.Stderr, "hotkey Ctrl+Win+E:", err, "fallback:", err2)
 }
 
 func (a *App) loadFavorites() {
@@ -195,20 +350,36 @@ func (a *App) loadState() {
 	if err != nil {
 		return
 	}
-	var p persisted
-	if json.Unmarshal(data, &p) != nil {
+	var s persisted
+	if json.Unmarshal(data, &s) != nil {
 		return
 	}
-	if p.Dir != "" {
-		if _, err := os.Stat(p.Dir); err == nil {
-			a.dir = p.Dir
+	if s.Mode == 2 || s.Mode == 4 {
+		a.mode = s.Mode
+	}
+	if s.Split >= 0.25 && s.Split <= 0.75 {
+		a.split = s.Split
+		a.splitPct = float32(s.Split * 100)
+	}
+	if s.Active >= 0 && s.Active < a.paneCount() {
+		a.active = s.Active
+	}
+	for i, ps := range s.Panes {
+		if i >= len(a.panes) {
+			break
 		}
+		p := a.panes[i]
+		if ps.Dir != "" {
+			if _, err := os.Stat(ps.Dir); err == nil {
+				p.dir = ps.Dir
+			}
+		}
+		if ps.SortKey != "" {
+			p.sortKey = ps.SortKey
+		}
+		p.sortAsc = ps.SortAsc
+		p.hidden = ps.ShowHidden
 	}
-	if p.SortKey != "" {
-		a.sortKey = p.SortKey
-	}
-	a.sortAsc = p.SortAsc
-	a.showHidden = p.ShowHidden
 }
 
 func (a *App) save() {
@@ -216,139 +387,142 @@ func (a *App) save() {
 	if path == "" {
 		return
 	}
-	p := persisted{Dir: a.dir, SortKey: a.sortKey, SortAsc: a.sortAsc, ShowHidden: a.showHidden}
-	data, err := json.MarshalIndent(p, "", "  ")
+	s := persisted{Mode: a.mode, Split: a.split, Active: a.active}
+	for _, p := range a.panes {
+		s.Panes = append(s.Panes, panePersist{
+			Dir: p.dir, SortKey: p.sortKey, SortAsc: p.sortAsc, ShowHidden: p.hidden,
+		})
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return
 	}
 	_ = os.WriteFile(path, data, 0o644)
 }
 
-func (a *App) navigate(dir string, record bool) {
+func (a *App) navigate(p *Pane, dir string, record bool) {
 	abs, err := fsx.NormalizeDir(dir)
 	if err != nil {
-		a.err = err.Error()
+		p.err = err.Error()
 		return
 	}
-	if abs == a.dir && !a.loading {
+	if abs == p.dir && !p.loading {
 		return
 	}
-	a.gen++
-	gen := a.gen
-	old := a.dir
-	showHidden := a.showHidden
-	a.loading = true
-	a.err = ""
+	p.gen++
+	gen := p.gen
+	old := p.dir
+	hidden := p.hidden
+	p.loading = true
+	p.err = ""
 	go func() {
-		entries, st, err := fsx.List(abs, showHidden)
+		entries, st, err := fsx.List(abs, hidden)
 		a.win.Update(func() {
-			if gen != a.gen {
+			if gen != p.gen {
 				return
 			}
-			a.loading = false
+			p.loading = false
 			if err != nil {
-				a.err = err.Error()
+				p.err = err.Error()
 				return
 			}
 			if record && old != "" && old != abs {
-				a.history = append(a.history, old)
-				a.forward = nil
+				p.history = append(p.history, old)
+				p.forward = nil
 			}
-			a.dir = abs
-			a.entries = entries
-			a.stats = st
-			a.selected = -1
-			a.list = ui.ListState{}
-			a.query = ""
+			p.dir = abs
+			p.entries = entries
+			p.stats = st
+			p.selected = -1
+			p.list = ui.ListState{}
+			p.query = ""
+			if a.currentPane() == p {
+				a.query = ""
+			}
 			a.save()
 		})
 	}()
 }
 
-func (a *App) refresh() {
-	dir := a.dir
+func (a *App) refresh(p *Pane) {
+	dir := p.dir
 	if dir == "" {
 		return
 	}
-	a.gen++
-	gen := a.gen
-	showHidden := a.showHidden
-	a.loading = true
-	a.err = ""
+	p.gen++
+	gen := p.gen
+	hidden := p.hidden
+	p.loading = true
+	p.err = ""
 	go func() {
-		entries, st, err := fsx.List(dir, showHidden)
+		entries, st, err := fsx.List(dir, hidden)
 		a.win.Update(func() {
-			if gen != a.gen {
+			if gen != p.gen {
 				return
 			}
-			a.loading = false
+			p.loading = false
 			if err != nil {
-				a.err = err.Error()
+				p.err = err.Error()
 				return
 			}
-			a.entries = entries
-			a.stats = st
-			a.selected = -1
-			a.list = ui.ListState{}
+			p.entries = entries
+			p.stats = st
+			p.selected = -1
+			p.list = ui.ListState{}
 		})
 	}()
 }
 
-func (a *App) back() {
-	if len(a.history) == 0 {
+func (a *App) back(p *Pane) {
+	if len(p.history) == 0 {
 		return
 	}
-	target := a.history[len(a.history)-1]
-	a.history = a.history[:len(a.history)-1]
-	a.forward = append(a.forward, a.dir)
-	a.navigate(target, false)
+	target := p.history[len(p.history)-1]
+	p.history = p.history[:len(p.history)-1]
+	p.forward = append(p.forward, p.dir)
+	a.navigate(p, target, false)
 }
 
-func (a *App) forwardDir() {
-	if len(a.forward) == 0 {
+func (a *App) forwardDir(p *Pane) {
+	if len(p.forward) == 0 {
 		return
 	}
-	target := a.forward[len(a.forward)-1]
-	a.forward = a.forward[:len(a.forward)-1]
-	a.history = append(a.history, a.dir)
-	a.navigate(target, false)
+	target := p.forward[len(p.forward)-1]
+	p.forward = p.forward[:len(p.forward)-1]
+	p.history = append(p.history, p.dir)
+	a.navigate(p, target, false)
 }
 
-func (a *App) up() {
-	if a.dir == "" {
+func (a *App) up(p *Pane) {
+	if p.dir == "" {
 		return
 	}
-	a.navigate(fsx.Parent(a.dir), true)
+	a.navigate(p, fsx.Parent(p.dir), true)
 }
 
-func (a *App) open(path string) {
-	for _, e := range a.entries {
+func (a *App) open(p *Pane, path string) {
+	for _, e := range p.entries {
 		if e.Path == path {
 			if e.IsDir {
-				a.navigate(e.Path, true)
+				a.navigate(p, e.Path, true)
 			} else if err := mygo.Shell.OpenPath(e.Path); err != nil {
-				a.err = err.Error()
+				p.err = err.Error()
 			}
 			return
 		}
 	}
 }
 
-func (a *App) current() (fsx.Entry, bool) {
-	if a.selected < 0 || a.selected >= len(a.visible) {
-		return fsx.Entry{}, false
-	}
-	return a.visible[a.selected], true
-}
-
-func (a *App) openSelected() {
-	if e, ok := a.current(); ok {
-		a.open(e.Path)
+func (a *App) openSelected(p *Pane) {
+	if e, ok := p.current(); ok {
+		a.open(p, e.Path)
 	}
 }
 
 func (a *App) copyPath(path string) {
 	if err := mygo.Clipboard.Write(transfer.TextData(path)); err != nil {
-		a.err = err.Error()
+		if p := a.currentPane(); p != nil {
+			p.err = err.Error()
+		}
 	}
 }

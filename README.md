@@ -6,22 +6,29 @@ Windows 文件夹管理器：Go 1.27 + [MyGo](https://github.com/egoist/mygo) �
 
 ## 功能
 
+- **Q-Dir 多面板**：默认左右 2 面板，可一键切 2×2 四宫格；每个面板独立目录、历史、排序、搜索和隐藏文件开关，活动面板蓝色边框。
+- **全局呼出**：`Ctrl + Win + E` 唤起并聚焦窗口；热键被其他程序占用时自动走低级键盘钩子兜底。
+- **磁盘容量**：侧边栏盘符显示已用 / 总量、百分比和容量进度条（75% 黄、90% 红）。
+- **Inspector**：选中文件或文件夹后，右下角按钮打开右侧详情面板（默认隐藏），显示类型、大小、修改时间、扩展名、完整路径和快捷操作。
+- **分栏拖拽**：底部 slider 和面板分隔条都能调整左右比例；四宫格下还可用中间横向分隔条调整上下比例。
 - 快速访问：主目录、桌面、文档、下载、图片、音乐、视频；自动列出可用盘符。
 - 浏览与导航：后退 / 前进 / 上一级、面包屑跳转、路径复制、在资源管理器打开。
-- 文件列表：虚拟化列表、目录优先、名称 / 大小 / 修改日期 / 类型排序、搜索过滤、隐藏文件开关。
+- 文件列表：虚拟化列表、目录优先、名称 / 大小 / 修改日期 / 类型排序、搜索过滤、隐藏文件开关；选中行蓝底白字。
 - 状态栏：项目数、文件 / 文件夹数、文件总大小、当前选中项。
-- **后台常驻**：关闭主窗口只隐藏，托盘图标始终可见；托盘右键菜单提供"打开"和"退出"。
+- **后台常驻**：关闭主窗口只隐藏，托盘图标始终可见；托盘右键菜单提供“打开”和“退出”。
 
+![四宫格](docs/quad.png)
+![Inspector](docs/inspector.png)
 ![托盘常驻](docs/tray.png)
 - 单实例：重复启动会聚焦已打开的窗口，不会出现第二个托盘图标。
-- 记住上次目录、排序和隐藏文件设置。
+- 记住上次目录、排序、隐藏文件、面板布局和分栏比例。
 
 ## 安装
 
 只发布 **Windows x86-64 MSI**：
 
 ```powershell
-msiexec /i FileSpace233-0.1.0-x64.msi
+msiexec /i FileSpace233-0.2.0-x64.msi
 ```
 
 安装到 `%LOCALAPPDATA%\Programs\FileSpace233`，无需管理员权限；创建开始菜单和桌面快捷方式，卸载保留用户数据。
@@ -48,9 +55,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-msi.ps1
 ## 结构
 
 ```
-app.go              状态、导航、托盘、持久化
-view.go             MyGo 原生 UI
-internal/fsx/       目录读取与排序（无 UI 依赖）
+app.go              多面板状态、导航、热键、托盘、持久化
+view.go             MyGo 原生 UI（Split、List、Inspector）
+internal/fsx/       目录读取、排序、磁盘容量（无 UI 依赖）
 resources/          icon.png / tray.png / app.ico
 build/wix/app.wxs   WiX 5 MSI 定义
 scripts/            build-msi.ps1 / verify.ps1
